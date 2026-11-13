@@ -17,12 +17,13 @@ from kipcb import Board              # noqa: E402
 
 W, H = 126, 50
 Y = 34                               # the signal line
-b = Board(s, W, H)
+# the transmit pulse passes through these at about half an amp
+b = Board(s, W, H, wide={n: 0.6 for n in ["TX_IN", "TXA", "TXB", "PROBE", "Q1", "Q2", "Q3"]})
 
 # connectors and mounting
-b.place("J1", 3, 10, 0)
-b.place("J2", 3, Y, 0)
-b.place("J3", W - 3, Y, 180)
+b.sma("J1", "L", 10)
+b.sma("J2", "L", Y)
+b.sma("J3", "R", Y)
 b.place("J4", 46, 5, 90)
 for ref, (x, y) in zip(["H1", "H2", "H3", "H4"], [(4, 46), (W - 4, 4), (W - 4, 46), (30, 4)]):
     b.place(ref, x, y)

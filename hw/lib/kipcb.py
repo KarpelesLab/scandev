@@ -26,7 +26,8 @@ def P(x, y):
 
 class Board:
     def __init__(self, sch, width, height, layers=4, track=0.25, clearance=0.2,
-                 via=(0.6, 0.3), pad_alias=None, wide=None):
+                 via=(0.6, 0.3), pad_alias=None, wide=None, wide_via=(0.8, 0.4),
+                 planes=("B.Cu", "In1.Cu", "In2.Cu")):
         self.sch = sch
         self.w, self.h = width, height
         self.layers = layers
@@ -34,6 +35,9 @@ class Board:
         self.placed = {}
         self.pad_alias = pad_alias or {}     # footprint pad number -> schematic pin number
         self.wide = wide or {}             # net -> track width, mm
+        self.wide_via = wide_via
+        self.planes = planes               # ground planes present while routing
+        self.edge_refs = set()             # edge-mount parts: pads reach the outline
 
     def place(self, ref, x, y, rot=0, side="F"):
         self.placed[ref] = (x, y, rot, side)
@@ -58,8 +62,8 @@ class Board:
             wc = pcbnew.NETCLASS(name)
             wc.SetTrackWidth(mm(width))
             wc.SetClearance(mm(self.rules["clearance"]))
-            wc.SetViaDiameter(mm(0.8))
-            wc.SetViaDrill(mm(0.4))
+            wc.SetViaDiameter(mm(self.wide_via[0]))
+            wc.SetViaDrill(mm(self.wide_via[1]))
             ds.m_NetSettings.SetNetclass(name, wc)
             for net, w_ in self.wide.items():
                 if w_ == width:
@@ -116,11 +120,9 @@ class Board:
         # its pour only after routing, so the router has to take every ground
         # pad down to a plane with a via instead of counting on the pour.
         self._pts, self._gnd = pts, nets["GND"]
-        copper = [pcbnew.B_Cu]
-        if self.layers == 4:
-            copper += [pcbnew.In1_Cu, pcbnew.In2_Cu]
-        for layer in copper:
-            self._zone(b, layer)
+        self._poured = set()
+        for name in self.planes:
+            self._zone(b, b.GetLayerID(name))
 
         # keep tracks and vias off the board edge
         e = 0.8
@@ -147,6 +149,7 @@ class Board:
         return self.path
 
     def _zone(self, b, layer):
+        self._poured.add(layer)
         z = pcbnew.ZONE(b)
         z.SetLayer(layer)
         z.SetNet(self._gnd)
@@ -161,8 +164,27 @@ class Board:
         b.Add(z)
 
     def top_pour(self):
-        self._zone(self.board, pcbnew.F_Cu)
+        """Ground on every copper layer that was left free for routing."""
+        layers = [pcbnew.F_Cu, pcbnew.B_Cu]
+        if self.layers == 4:
+            layers += [pcbnew.In1_Cu, pcbnew.In2_Cu]
+        for layer in layers:
+            if layer not in self._poured:
+                self._zone(self.board, layer)
         pcbnew.SaveBoard(self.path, self.board)
+
+    def sma(self, ref, side, pos):
+        """Edge-launch SMA: the footprint's board edge is 1.54 mm from its
+        origin and the connector body points along +x."""
+        self.edge_refs.add(ref)
+        if side == "L":
+            self.place(ref, 1.54, pos, 180)
+        elif side == "R":
+            self.place(ref, self.w - 1.54, pos, 0)
+        elif side == "T":
+            self.place(ref, pos, 1.54, 270)
+        else:
+            self.place(ref, pos, self.h - 1.54, 90)
 
     def route(self, workdir, passes=20):
         os.makedirs(workdir, exist_ok=True)
@@ -229,7 +251,11 @@ class Board:
         else:
             self.top_pour()
         r = self.drc(workdir)
-        real = [v for v in r["violations"] if v[1] not in self.IGNORED]
+        def expected(v):
+            # an edge-mount connector's pads are meant to reach the outline
+            return v[1] == "copper_edge_clearance" and any(
+                f" of {ref} " in v[3] + " " for ref in self.edge_refs)
+        real = [v for v in r["violations"] if v[1] not in self.IGNORED and not expected(v)]
         print(f"{self.sch.name}: {len(real)} rule violations, {len(r['unconnected'])} unconnected"
               + ("" if route else " (not routed)"))
         for v in real[:12]:
