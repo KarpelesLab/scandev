@@ -28,14 +28,16 @@ DIODE = ".model DSW D(IS=2.52n RS=0.568 N=1.752 CJO=4p M=0.4 TT=6n BV=100)"
 
 
 def netlist(f0, p_tx, t_pulse, coil, stages=3, npar=2, r_bleed=470.0,
-            mode="tx", t_stop=None, z0=50.0, f_qw=None):
-    """f_qw: frequency the quarter-wave sections were built for (default f0)."""
+            mode="tx", t_stop=None, z0=50.0, f_qw=None, lq=None, cq=None):
+    """f_qw: frequency the quarter-wave sections were built for (default f0).
+    lq, cq: fitted section values, overriding the ideal ones."""
     f_qw = f_qw or f0
     w = 2 * math.pi * f0
     wq = 2 * math.pi * f_qw
     ct, cm, rs = match(coil, f0, z0)
     L = coil.inductance
-    lq, cq = z0 / wq, 1 / (wq * z0)
+    lq = lq or z0 / wq
+    cq = cq or 1 / (wq * z0)
     v_oc = 2 * math.sqrt(2 * p_tx * z0)      # open-circuit peak for p_tx into z0
     n = [f"* NQR front end, mode={mode}", DIODE]
 
@@ -111,8 +113,8 @@ def envelope(t, v, f0):
 
 
 def analyse(f0=3.6e6, p_tx=25.0, t_pulse=100e-6, coil=Coil(), stages=3,
-            npar=2, f_qw=None, quiet=False):
-    kw = dict(coil=coil, stages=stages, npar=npar, f_qw=f_qw)
+            npar=2, f_qw=None, lq=None, cq=None, quiet=False):
+    kw = dict(coil=coil, stages=stages, npar=npar, f_qw=f_qw, lq=lq, cq=cq)
     tx = run(netlist(f0, p_tx, t_pulse, mode="tx", t_stop=t_pulse + 250e-6, **kw))
     t, vlna, vt, vp, icoil = tx.T
     on = (t > t_pulse * 0.6) & (t < t_pulse)
@@ -161,5 +163,8 @@ if __name__ == "__main__":
     ap.add_argument("--stages", type=int, default=3)
     ap.add_argument("--npar", type=int, default=2)
     ap.add_argument("--fqw", type=float, default=None)
+    ap.add_argument("--lq", type=float, default=None, help="section inductance, H")
+    ap.add_argument("--cq", type=float, default=None, help="section shunt capacitance, F")
     a = ap.parse_args()
-    analyse(a.f0, a.power, a.pulse, stages=a.stages, npar=a.npar, f_qw=a.fqw)
+    analyse(a.f0, a.power, a.pulse, stages=a.stages, npar=a.npar, f_qw=a.fqw,
+            lq=a.lq, cq=a.cq)
