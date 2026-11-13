@@ -21,7 +21,9 @@ from parts import C, FB, L, R, crossed, sma                      # noqa: E402
 
 s = Schematic("fe", "NQR receive front end", paper="A3")
 OPA = "Package_SON:Texas_DSG0008A_WSON-8-1EP_2x2mm_P0.5mm_EP0.9x1.6mm"
-IND = dict(mpn="2.2uH >=0.8A SRF>30MHz")       # part to be chosen, see README
+# a 5 x 5 mm shielded power inductor; its loss at 3.3 MHz is not in the
+# datasheet and has to be measured
+IND = dict(fp="Inductor_SMD:L_Changjiang_FNR5040S", lcsc="C167957", mpn="FNR5040S2R2MT")
 
 # ---------------------------------------------------------------- transmit side
 s.text("TRANSMIT ISOLATOR  series crossed diodes pass the pulse, block amplifier noise afterwards",

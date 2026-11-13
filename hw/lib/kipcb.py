@@ -7,6 +7,7 @@ rule check.  Placement is the part that carries the design intent; the
 routing is a first pass to be reviewed, not a finished layout.
 """
 import json
+import math
 import os
 import subprocess
 
@@ -37,6 +38,7 @@ class Board:
         self.wide = wide or {}             # net -> track width, mm
         self.wide_via = wide_via
         self.zone_clearance = zone_clearance
+        self.stitch_pitch = 2.5
         self.planes = planes               # ground planes present while routing
         self.edge_refs = set()             # edge-mount parts: pads reach the outline
 
@@ -51,7 +53,7 @@ class Board:
         # JLCPCB four-layer limits: 0.09 mm track, 0.2 mm from a hole to other copper
         ds.m_TrackMinWidth = mm(0.09)
         ds.m_HoleClearance = mm(0.2)
-        ds.m_MinClearance = mm(0.127)
+        ds.m_MinClearance = mm(0.09)
         ds.m_ViasMinSize = mm(0.45)
         ds.m_MinThroughDrill = mm(0.2)
         nc = ds.m_NetSettings.GetDefaultNetclass()
@@ -181,41 +183,63 @@ class Board:
         pcbnew.SaveBoard(self.path, self.board)
 
     def stitch(self, pitch=4.0, margin=0.35):
-        """Ground vias on a grid wherever nothing is in the way.
+        """Ground vias: one for each surface-mount ground pad, then a grid.
 
-        They tie the outer pours to the planes.  Without them a patch of top
-        pour fenced in by tracks is left floating, and with it any ground pad
-        whose only connection was that pour (the top-side pads of an
-        edge-mount connector, for one).
+        The router leaves many ground pads to the pour.  A pad fenced in by
+        its neighbours then hangs on a scrap of copper, and a ball under a
+        BGA gets no pour at all.  Each ground pad with no ground via close by
+        gets one, joined to it by a short track.  The grid ties the outer
+        pours to the planes everywhere else.
         """
         b = self.board
         dia, drill = self.rules["via"]
         r = dia / 2
         M = pcbnew.ToMM
-        segs, discs, boxes = [], [], []
+        gnd = self._gnd.GetNetCode()
+        segs, discs, boxes, gvias = [], [], [], []
         for t in b.GetTracks():
             if t.GetClass() == "PCB_VIA":
                 p = t.GetPosition()
                 discs.append((M(p.x), M(p.y), M(t.GetWidth(pcbnew.F_Cu)) / 2))
+                if t.GetNetCode() == gnd:
+                    gvias.append((M(p.x), M(p.y)))
             else:
                 a, e = t.GetStart(), t.GetEnd()
                 segs.append((M(a.x), M(a.y), M(e.x), M(e.y), M(t.GetWidth()) / 2))
+        gpads = []
         for fp in b.GetFootprints():
             for pad in fp.Pads():
                 bb = pad.GetBoundingBox()
-                boxes.append((M(bb.GetLeft()), M(bb.GetTop()), M(bb.GetRight()), M(bb.GetBottom())))
-            cy = fp.GetCourtyard(pcbnew.F_CrtYd if not fp.IsFlipped() else pcbnew.B_CrtYd)
+                box = (M(bb.GetLeft()), M(bb.GetTop()), M(bb.GetRight()), M(bb.GetBottom()))
+                c = pad.GetPosition()
+                if pad.GetShape(pcbnew.F_Cu) == pcbnew.PAD_SHAPE_CIRCLE:
+                    item = ("disc", M(c.x), M(c.y), (box[2] - box[0]) / 2)
+                    discs.append(item[1:])
+                else:
+                    item = ("box",) + box
+                    boxes.append(box)
+                if (pad.GetNetCode() == gnd and pad.GetAttribute() == pcbnew.PAD_ATTRIB_SMD
+                        and pad.IsOnLayer(pcbnew.F_Cu)):
+                    gpads.append((M(c.x), M(c.y), box, item))
+            cy = fp.GetCourtyard(pcbnew.F_CrtYd)
             if cy.OutlineCount() and fp.GetReference().startswith("H"):
                 bb = cy.BBox()
                 boxes.append((M(bb.GetLeft()), M(bb.GetTop()), M(bb.GetRight()), M(bb.GetBottom())))
 
-        def free(x, y):
-            g = r + margin
-            for x0, y0, x1, y1 in boxes:
+        def free(x, y, m=margin, own=None, rad=None):
+            if not (1.9 < x < self.w - 1.9 and 1.9 < y < self.h - 1.9):
+                return False
+            g = (r if rad is None else rad) + m
+            for box in boxes:
+                if own and own[0] == "box" and box == own[1:]:
+                    continue
+                x0, y0, x1, y1 = box
                 if x0 - g < x < x1 + g and y0 - g < y < y1 + g:
                     return False
-            for cx, cy_, cr in discs:
-                if (x - cx) ** 2 + (y - cy_) ** 2 < (cr + g) ** 2:
+            for d in discs:
+                if own and own[0] == "disc" and d == own[1:]:
+                    continue
+                if (x - d[0]) ** 2 + (y - d[1]) ** 2 < (d[2] + g) ** 2:
                     return False
             for x0, y0, x1, y1, hw in segs:
                 dx, dy = x1 - x0, y1 - y0
@@ -225,22 +249,63 @@ class Board:
                     return False
             return True
 
+        def drop(x, y):
+            v = pcbnew.PCB_VIA(b)
+            v.SetPosition(P(x, y))
+            v.SetWidth(pcbnew.F_Cu, mm(dia))
+            v.SetDrill(mm(drill))
+            v.SetLayerPair(pcbnew.F_Cu, pcbnew.B_Cu)
+            v.SetNet(self._gnd)
+            b.Add(v)
+            discs.append((x, y, r))
+            gvias.append((x, y))
+
         n = 0
+        # beside a pad the via only has to clear other nets by the rule
+        # clearance; next to high-voltage copper it keeps the zone's distance
+        near = max(self.rules["clearance"] + 0.03, self.zone_clearance if self.zone_clearance > 0.3 else 0)
+        for cx, cy_, (x0, y0, x1, y1), item in gpads:
+            if any((cx - vx) ** 2 + (cy_ - vy) ** 2 < 1.2 ** 2 for vx, vy in gvias):
+                continue
+            g = r + 0.08
+            spots = []
+            for e in (0, 0.2, 0.4, 0.8, 1.2, 1.6, 2.0, 2.5):
+                d = g + e
+                spots += [(x1 + d, cy_), (x0 - d, cy_), (cx, y1 + d), (cx, y0 - d),
+                          (x1 + d, y1 + d), (x0 - d, y0 - d), (x1 + d, y0 - d), (x0 - d, y1 + d)]
+            sw = min(0.25, max(self.rules["track"], 0.15))
+
+            def path_free(x, y):
+                k = max(2, int(math.hypot(x - cx, y - cy_) / 0.08))
+                return all(free(cx + (x - cx) * i / k, cy_ + (y - cy_) * i / k, near, item, sw / 2)
+                           for i in range(k + 1))
+
+            for x, y in spots:
+                if free(x, y, near, item) and path_free(x, y):
+                    drop(x, y)
+                    t = pcbnew.PCB_TRACK(b)
+                    t.SetStart(P(cx, cy_))
+                    t.SetEnd(P(x, y))
+                    t.SetWidth(mm(sw))
+                    segs.append((cx, cy_, x, y, sw / 2))
+                    t.SetLayer(pcbnew.F_Cu)
+                    t.SetNet(self._gnd)
+                    b.Add(t)
+                    n += 1
+                    break
         y = 2.0
         while y < self.h - 1.9:
             x = 2.0
             while x < self.w - 1.9:
                 if free(x, y):
-                    v = pcbnew.PCB_VIA(b)
-                    v.SetPosition(P(x, y))
-                    v.SetWidth(pcbnew.F_Cu, mm(dia))
-                    v.SetDrill(mm(drill))
-                    v.SetLayerPair(pcbnew.F_Cu, pcbnew.B_Cu)
-                    v.SetNet(self._gnd)
-                    b.Add(v)
+                    drop(x, y)
                     n += 1
                 x += pitch
             y += pitch
+        # the router necks tracks down below what can be made; widen those
+        for t in b.GetTracks():
+            if t.GetClass() != "PCB_VIA" and t.GetWidth() < mm(0.09):
+                t.SetWidth(mm(0.09))
         return n
 
     def sma(self, ref, side, pos):
@@ -295,7 +360,7 @@ class Board:
             raise RuntimeError("autorouter produced nothing:\n" + self.route_log)
         if not pcbnew.ImportSpecctraSES(self.board, ses):
             raise RuntimeError("SES import failed")
-        self.stitched = self.stitch(margin=max(0.35, self.zone_clearance + 0.3))
+        self.stitched = self.stitch(pitch=self.stitch_pitch, margin=max(0.35, self.zone_clearance + 0.3))
         self.top_pour()
 
     def drc(self, workdir):
@@ -331,16 +396,21 @@ class Board:
 
     IGNORED = ("lib_footprint_issues", "silk_overlap", "silk_over_copper", "silk_edge_clearance")
 
-    def run(self, outdir, workdir, route=False, png=True):
+    def run(self, outdir, workdir, route=False, png=True, passes=20):
         """Build, optionally route, check and render; print a short report."""
-        self.build(outdir)
-        if self.unmapped:
-            print("pads with no schematic pin:", " ".join(self.unmapped))
-        if route:
-            self.route(workdir)
-        else:
-            self.top_pour()
-        r = self.drc(workdir)
+        # the router does not give the same result twice: take the first
+        # attempt that leaves nothing unconnected
+        for attempt in range(3 if route else 1):
+            self.build(outdir)
+            if self.unmapped and not attempt:
+                print("pads with no schematic pin:", " ".join(self.unmapped))
+            if route:
+                self.route(workdir, passes)
+            else:
+                self.top_pour()
+            r = self.drc(workdir)
+            if not route or not r["unconnected"]:
+                break
         def expected(v):
             # an edge-mount connector's pads are meant to reach the outline
             return v[1] == "copper_edge_clearance" and any(

@@ -93,4 +93,5 @@ def caps(sch, prefix, start, rail, values, at, pkg="0603", pitch=6, gnd="GND"):
 
 def button(sch, ref, value, at, a, b="GND"):
     sch.add("Switch:SW_Push", ref, value, at, {"1": a, "2": b},
-            fp="Button_Switch_SMD:SW_SPST_TL3342", mpn="TL3342 / 1TS005 class 5x5 tact")
+            fp="Button_Switch_SMD:SW_Push_1P1T_XKB_TS-1187A", lcsc="C318889",
+            mpn="TS-1187A-C-C-B")

@@ -53,7 +53,7 @@ R(s, "R1", "220 1W", (66, y - 4), "VSYS", "VPA", pkg="2512", rot=90)
 R(s, "R2", "220 1W", (66, y + 3), "VSYS", "VPA", pkg="2512", rot=90)
 for i, ref in enumerate(["C2", "C3"]):
     s.add("Device:C_Polarized", ref, "1000u 25V", (80 + 8 * i, y), {"1": "VPA", "2": "GND"},
-          fp="Capacitor_THT:CP_Radial_D10.0mm_P5.00mm")
+          fp="Capacitor_THT:CP_Radial_D10.0mm_P5.00mm", lcsc="C88720", mpn="25YXJ1000M10X20")
 C(s, "C4", "10u 25V", (96, y), "VPA", "GND", pkg="1206")
 C(s, "C5", "10u 25V", (104, y), "VPA", "GND", pkg="1206")
 C(s, "C6", "100n 50V", (112, y), "VPA", "GND")
@@ -92,8 +92,8 @@ s.add("Transistor_FET:IRLML0030", "Q2", "IRLML0060", (106, y + 10),
 R(s, "R13", "10k", (118, y + 8), "SW", "GND")
 C(s, "C10", "3.9n C0G", (128, y - 4), "SW", "TANK", pkg="0805", rot=90)
 C(s, "C11", "DNP", (128, y + 4), "SW", "TANK", pkg="0805", rot=90)
-L(s, "L1", "1.5u", (142, y - 4), "TANK", "TX_OUT", fp="Inductor_SMD:L_Bourns_SRP5030T",
-  mpn="1.5uH >=3A")
+L(s, "L1", "1.5u", (142, y - 4), "TANK", "TX_OUT", fp="Inductor_SMD:L_Sunlord_MWSA0503S",
+  lcsc="C408407", mpn="MWSA0503S-1R5MT")
 C(s, "C12", "2.2n C0G", (134, y + 14), "TX_OUT", "GND", pkg="0805")
 C(s, "C13", "470p C0G", (144, y + 14), "TX_OUT", "GND", pkg="0805")
 sma(s, "J6", "TX OUT", (156, y), "TX_OUT")
