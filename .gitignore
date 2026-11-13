@@ -1,0 +1,19 @@
+# video research material (re-downloadable)
+video/.venv/
+video/audio.*
+video/v.info.json
+# local toolchain
+tools/
+# build / sim output
+build/
+*.raw
+*.vcd
+*.fst
+__pycache__/
+# KiCad
+*-backups/
+*.kicad_prl
+*.lck
+fp-info-cache
+# transcript of a third-party video; regenerate with video/transcribe.py
+video/transcript.txt
