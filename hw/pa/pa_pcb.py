@@ -16,7 +16,7 @@ from kipcb import Board              # noqa: E402
 
 W, H = 96, 52
 POWER = ["VIN", "VSYS", "VPA", "SW", "TANK", "TX_OUT", "VDRV"]
-b = Board(s, W, H, wide={n: 0.8 for n in POWER})
+b = Board(s, W, H, planes=("In1.Cu", "B.Cu"), wide={n: 0.8 for n in POWER})
 
 b.place("J1", 14.5, 9, 0)
 b.place("D1", 24, 6, 0)

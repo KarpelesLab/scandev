@@ -27,7 +27,7 @@ def P(x, y):
 class Board:
     def __init__(self, sch, width, height, layers=4, track=0.25, clearance=0.2,
                  via=(0.6, 0.3), pad_alias=None, wide=None, wide_via=(0.8, 0.4),
-                 planes=("B.Cu", "In1.Cu", "In2.Cu")):
+                 planes=("In1.Cu",), zone_clearance=0.25):
         self.sch = sch
         self.w, self.h = width, height
         self.layers = layers
@@ -36,6 +36,7 @@ class Board:
         self.pad_alias = pad_alias or {}     # footprint pad number -> schematic pin number
         self.wide = wide or {}             # net -> track width, mm
         self.wide_via = wide_via
+        self.zone_clearance = zone_clearance
         self.planes = planes               # ground planes present while routing
         self.edge_refs = set()             # edge-mount parts: pads reach the outline
 
@@ -47,7 +48,9 @@ class Board:
         b = pcbnew.BOARD()
         b.SetCopperLayerCount(self.layers)
         ds = b.GetDesignSettings()
-        ds.m_TrackMinWidth = mm(0.127)
+        # JLCPCB four-layer limits: 0.09 mm track, 0.2 mm from a hole to other copper
+        ds.m_TrackMinWidth = mm(0.09)
+        ds.m_HoleClearance = mm(0.2)
         ds.m_MinClearance = mm(0.127)
         ds.m_ViasMinSize = mm(0.45)
         ds.m_MinThroughDrill = mm(0.2)
@@ -57,17 +60,20 @@ class Board:
         nc.SetViaDiameter(mm(self.rules["via"][0]))
         nc.SetViaDrill(mm(self.rules["via"][1]))
 
-        for width in sorted(set(self.wide.values())):
-            name = f"W{int(round(width * 1000))}"
+        # net classes: a width, or (width, clearance) for high-voltage nets
+        classes = {}
+        for net, spec in self.wide.items():
+            classes.setdefault(spec if isinstance(spec, tuple) else (spec, None), []).append(net)
+        for (width, clr), members in sorted(classes.items(), key=str):
+            name = f"W{int(round(width * 1000))}" + (f"C{int(round(clr * 1000))}" if clr else "")
             wc = pcbnew.NETCLASS(name)
             wc.SetTrackWidth(mm(width))
-            wc.SetClearance(mm(self.rules["clearance"]))
+            wc.SetClearance(mm(clr or self.rules["clearance"]))
             wc.SetViaDiameter(mm(self.wide_via[0]))
             wc.SetViaDrill(mm(self.wide_via[1]))
             ds.m_NetSettings.SetNetclass(name, wc)
-            for net, w_ in self.wide.items():
-                if w_ == width:
-                    ds.m_NetSettings.SetNetclassPatternAssignment(net, name)
+            for net in members:
+                ds.m_NetSettings.SetNetclassPatternAssignment(net, name)
 
         nets = {}
         for net in sorted({v for v in self.sch.want.values() if v}):
@@ -153,10 +159,11 @@ class Board:
         z = pcbnew.ZONE(b)
         z.SetLayer(layer)
         z.SetNet(self._gnd)
-        z.SetLocalClearance(mm(0.25))
+        z.SetLocalClearance(mm(self.zone_clearance))
         z.SetMinThickness(mm(0.2))
         # solid connections: thermal spokes starve the small ground pads
         z.SetPadConnection(pcbnew.ZONE_CONNECTION_FULL)
+        z.SetIslandRemovalMode(pcbnew.ISLAND_REMOVAL_MODE_ALWAYS)
         o = z.Outline()
         o.NewOutline()
         for x, y in self._pts:
@@ -172,6 +179,69 @@ class Board:
             if layer not in self._poured:
                 self._zone(self.board, layer)
         pcbnew.SaveBoard(self.path, self.board)
+
+    def stitch(self, pitch=4.0, margin=0.35):
+        """Ground vias on a grid wherever nothing is in the way.
+
+        They tie the outer pours to the planes.  Without them a patch of top
+        pour fenced in by tracks is left floating, and with it any ground pad
+        whose only connection was that pour (the top-side pads of an
+        edge-mount connector, for one).
+        """
+        b = self.board
+        dia, drill = self.rules["via"]
+        r = dia / 2
+        M = pcbnew.ToMM
+        segs, discs, boxes = [], [], []
+        for t in b.GetTracks():
+            if t.GetClass() == "PCB_VIA":
+                p = t.GetPosition()
+                discs.append((M(p.x), M(p.y), M(t.GetWidth(pcbnew.F_Cu)) / 2))
+            else:
+                a, e = t.GetStart(), t.GetEnd()
+                segs.append((M(a.x), M(a.y), M(e.x), M(e.y), M(t.GetWidth()) / 2))
+        for fp in b.GetFootprints():
+            for pad in fp.Pads():
+                bb = pad.GetBoundingBox()
+                boxes.append((M(bb.GetLeft()), M(bb.GetTop()), M(bb.GetRight()), M(bb.GetBottom())))
+            cy = fp.GetCourtyard(pcbnew.F_CrtYd if not fp.IsFlipped() else pcbnew.B_CrtYd)
+            if cy.OutlineCount() and fp.GetReference().startswith("H"):
+                bb = cy.BBox()
+                boxes.append((M(bb.GetLeft()), M(bb.GetTop()), M(bb.GetRight()), M(bb.GetBottom())))
+
+        def free(x, y):
+            g = r + margin
+            for x0, y0, x1, y1 in boxes:
+                if x0 - g < x < x1 + g and y0 - g < y < y1 + g:
+                    return False
+            for cx, cy_, cr in discs:
+                if (x - cx) ** 2 + (y - cy_) ** 2 < (cr + g) ** 2:
+                    return False
+            for x0, y0, x1, y1, hw in segs:
+                dx, dy = x1 - x0, y1 - y0
+                L2 = dx * dx + dy * dy
+                t = 0 if L2 == 0 else max(0, min(1, ((x - x0) * dx + (y - y0) * dy) / L2))
+                if (x - x0 - t * dx) ** 2 + (y - y0 - t * dy) ** 2 < (hw + g) ** 2:
+                    return False
+            return True
+
+        n = 0
+        y = 2.0
+        while y < self.h - 1.9:
+            x = 2.0
+            while x < self.w - 1.9:
+                if free(x, y):
+                    v = pcbnew.PCB_VIA(b)
+                    v.SetPosition(P(x, y))
+                    v.SetWidth(pcbnew.F_Cu, mm(dia))
+                    v.SetDrill(mm(drill))
+                    v.SetLayerPair(pcbnew.F_Cu, pcbnew.B_Cu)
+                    v.SetNet(self._gnd)
+                    b.Add(v)
+                    n += 1
+                x += pitch
+            y += pitch
+        return n
 
     def sma(self, ref, side, pos):
         """Edge-launch SMA: the footprint's board edge is 1.54 mm from its
@@ -195,8 +265,27 @@ class Board:
                 os.remove(f)
         if not pcbnew.ExportSpecctraDSN(self.board, dsn):
             raise RuntimeError("DSN export failed")
+        # A ground plane is not a routing layer.  The router does not see the
+        # pour, so unless the layer is switched off it runs tracks through
+        # the plane and cuts it up.  Vias still pass through and connect.
+        rules = os.path.join(workdir, self.sch.name + ".rules")
+        names = ["F.Cu", "In1.Cu", "In2.Cu", "B.Cu"] if self.layers == 4 else ["F.Cu", "B.Cu"]
+        with open(rules, "w") as f:
+            f.write(f"(rules PCB {self.sch.name}\n  (snap_angle fortyfive_degree)\n"
+                    "  (autoroute_settings\n    (fanout off)\n    (autoroute on)\n"
+                    "    (postroute on)\n    (vias on)\n    (via_costs 50)\n"
+                    "    (plane_via_costs 5)\n    (start_ripup_costs 100)\n"
+                    "    (start_pass_no 1)\n")
+            for i, name in enumerate(names):
+                active = "off" if name in self.planes else "on"
+                way = "horizontal" if i % 2 == 0 else "vertical"
+                f.write(f"    (layer_rule {name}\n      (active {active})\n"
+                        f"      (preferred_direction {way})\n"
+                        "      (preferred_direction_trace_costs 1.0)\n"
+                        "      (against_preferred_direction_trace_costs 2.0)\n    )\n")
+            f.write("  )\n)\n")
         # The router needs no network; give it none.
-        cmd = [FREEROUTING, "-de", dsn, "-do", ses, "-mp", str(passes), "-mt", "8",
+        cmd = [FREEROUTING, "-de", dsn, "-dr", rules, "-do", ses, "-mp", str(passes), "-mt", "8",
                "--gui.enabled=false"]
         if subprocess.run(["unshare", "-rn", "true"], capture_output=True).returncode == 0:
             cmd = ["unshare", "-rn"] + cmd
@@ -206,6 +295,7 @@ class Board:
             raise RuntimeError("autorouter produced nothing:\n" + self.route_log)
         if not pcbnew.ImportSpecctraSES(self.board, ses):
             raise RuntimeError("SES import failed")
+        self.stitched = self.stitch(margin=max(0.35, self.zone_clearance + 0.3))
         self.top_pour()
 
     def drc(self, workdir):

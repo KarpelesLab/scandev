@@ -18,7 +18,7 @@ from kipcb import Board              # noqa: E402
 W, H = 126, 50
 Y = 34                               # the signal line
 # the transmit pulse passes through these at about half an amp
-b = Board(s, W, H, wide={n: 0.6 for n in ["TX_IN", "TXA", "TXB", "PROBE", "Q1", "Q2", "Q3"]})
+b = Board(s, W, H, planes=("In1.Cu", "B.Cu"), wide={n: 0.6 for n in ["TX_IN", "TXA", "TXB", "PROBE", "Q1", "Q2", "Q3"]})
 
 # connectors and mounting
 b.sma("J1", "L", 10)
