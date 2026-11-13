@@ -9,6 +9,7 @@ routing is a first pass to be reviewed, not a finished layout.
 import json
 import math
 import os
+import shutil
 import subprocess
 
 import pcbnew
@@ -200,10 +201,12 @@ class Board:
         for t in b.GetTracks():
             if t.GetClass() == "PCB_VIA":
                 p = t.GetPosition()
-                discs.append((M(p.x), M(p.y), M(t.GetWidth(pcbnew.F_Cu)) / 2))
                 if t.GetNetCode() == gnd:
                     gvias.append((M(p.x), M(p.y)))
-            else:
+                else:
+                    discs.append((M(p.x), M(p.y), M(t.GetWidth(pcbnew.F_Cu)) / 2))
+            elif t.GetNetCode() != gnd:
+                # ground copper is no obstacle to a ground via
                 a, e = t.GetStart(), t.GetEnd()
                 segs.append((M(a.x), M(a.y), M(e.x), M(e.y), M(t.GetWidth()) / 2))
         gpads = []
@@ -226,7 +229,11 @@ class Board:
                 bb = cy.BBox()
                 boxes.append((M(bb.GetLeft()), M(bb.GetTop()), M(bb.GetRight()), M(bb.GetBottom())))
 
+        why = [""]
+        self.stranded = []
+
         def free(x, y, m=margin, own=None, rad=None):
+            why[0] = "edge"
             if not (1.9 < x < self.w - 1.9 and 1.9 < y < self.h - 1.9):
                 return False
             g = (r if rad is None else rad) + m
@@ -235,12 +242,20 @@ class Board:
                     continue
                 x0, y0, x1, y1 = box
                 if x0 - g < x < x1 + g and y0 - g < y < y1 + g:
+                    why[0] = "pad"
                     return False
             for d in discs:
                 if own and own[0] == "disc" and d == own[1:]:
                     continue
                 if (x - d[0]) ** 2 + (y - d[1]) ** 2 < (d[2] + g) ** 2:
+                    why[0] = "via/ball"
                     return False
+            if rad is None:      # a via: keep its hole clear of other ground vias' holes
+                for vx, vy in gvias:
+                    if (x - vx) ** 2 + (y - vy) ** 2 < (drill + 0.3) ** 2:
+                        why[0] = "ground via"
+                        return False
+            why[0] = "track"
             for x0, y0, x1, y1, hw in segs:
                 dx, dy = x1 - x0, y1 - y0
                 L2 = dx * dx + dy * dy
@@ -257,7 +272,6 @@ class Board:
             v.SetLayerPair(pcbnew.F_Cu, pcbnew.B_Cu)
             v.SetNet(self._gnd)
             b.Add(v)
-            discs.append((x, y, r))
             gvias.append((x, y))
 
         n = 0
@@ -265,14 +279,18 @@ class Board:
         # clearance; next to high-voltage copper it keeps the zone's distance
         near = max(self.rules["clearance"] + 0.03, self.zone_clearance if self.zone_clearance > 0.3 else 0)
         for cx, cy_, (x0, y0, x1, y1), item in gpads:
-            if any((cx - vx) ** 2 + (cy_ - vy) ** 2 < 1.2 ** 2 for vx, vy in gvias):
+            if any((cx - vx) ** 2 + (cy_ - vy) ** 2 < 0.75 ** 2 for vx, vy in gvias):
                 continue
             g = r + 0.08
+            # nearest first: rings of sixteen directions out to 4 mm
+            hx, hy = (x1 - x0) / 2, (y1 - y0) / 2
             spots = []
-            for e in (0, 0.2, 0.4, 0.8, 1.2, 1.6, 2.0, 2.5):
-                d = g + e
-                spots += [(x1 + d, cy_), (x0 - d, cy_), (cx, y1 + d), (cx, y0 - d),
-                          (x1 + d, y1 + d), (x0 - d, y0 - d), (x1 + d, y0 - d), (x0 - d, y1 + d)]
+            for i in range(17):
+                d = g + 0.25 * i
+                for k in range(16):
+                    a = math.pi * k / 8
+                    ux, uy = math.cos(a), math.sin(a)
+                    spots.append((cx + ux * (hx + d), cy_ + uy * (hy + d)))
             sw = min(0.25, max(self.rules["track"], 0.15))
 
             def path_free(x, y):
@@ -287,12 +305,17 @@ class Board:
                     t.SetStart(P(cx, cy_))
                     t.SetEnd(P(x, y))
                     t.SetWidth(mm(sw))
-                    segs.append((cx, cy_, x, y, sw / 2))
                     t.SetLayer(pcbnew.F_Cu)
                     t.SetNet(self._gnd)
                     b.Add(t)
                     n += 1
                     break
+            else:
+                tally = {}
+                for x, y in spots:
+                    free(x, y, near, item) and path_free(x, y)
+                    tally[why[0]] = tally.get(why[0], 0) + 1
+                self.stranded.append((round(cx, 2), round(cy_, 2), tally))
         y = 2.0
         while y < self.h - 1.9:
             x = 2.0
@@ -355,7 +378,10 @@ class Board:
         if subprocess.run(["unshare", "-rn", "true"], capture_output=True).returncode == 0:
             cmd = ["unshare", "-rn"] + cmd
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
-        self.route_log = "\n".join(l[25:] for l in r.stdout.splitlines() if "DEBUG" not in l)[-1500:]
+        self.route_log = "\n".join(l[25:] for l in r.stdout.splitlines() if "DEBUG" not in l)[-6000:]
+        for line in self.route_log.splitlines():
+            if "Auto-routing stage completed" in line:
+                print("  router:", line[line.index("started with"):][:95])
         if not os.path.exists(ses):
             raise RuntimeError("autorouter produced nothing:\n" + self.route_log)
         if not pcbnew.ImportSpecctraSES(self.board, ses):
@@ -396,11 +422,13 @@ class Board:
 
     IGNORED = ("lib_footprint_issues", "silk_overlap", "silk_over_copper", "silk_edge_clearance")
 
-    def run(self, outdir, workdir, route=False, png=True, passes=20):
+    def run(self, outdir, workdir, route=False, png=True, passes=20, tries=3):
         """Build, optionally route, check and render; print a short report."""
-        # the router does not give the same result twice: take the first
-        # attempt that leaves nothing unconnected
-        for attempt in range(3 if route else 1):
+        # the router does not give the same result twice: keep the best of
+        # a few attempts, stopping early at one that leaves nothing unconnected
+        best = None
+        keep = os.path.join(workdir, self.sch.name + "-best.kicad_pcb")
+        for attempt in range(tries if route else 1):
             self.build(outdir)
             if self.unmapped and not attempt:
                 print("pads with no schematic pin:", " ".join(self.unmapped))
@@ -409,8 +437,13 @@ class Board:
             else:
                 self.top_pour()
             r = self.drc(workdir)
+            if best is None or len(r["unconnected"]) < best:
+                best = len(r["unconnected"])
+                shutil.copy(self.path, keep)
             if not route or not r["unconnected"]:
                 break
+        shutil.copy(keep, self.path)
+        r = self.drc(workdir)
         def expected(v):
             # an edge-mount connector's pads are meant to reach the outline
             return v[1] == "copper_edge_clearance" and any(
@@ -427,4 +460,14 @@ class Board:
             out = os.path.join(outdir, self.sch.name + "-top.png")
             subprocess.run(["magick", "-density", "380", "-background", "white", svg, "-flatten",
                             "-resize", "1600x", out], capture_output=True)
+            if route:
+                self.render3d(outdir)
         return not real and (not route or not r["unconnected"])
+
+    def render3d(self, outdir):
+        out = os.path.join(outdir, self.sch.name + "-3d.png")
+        subprocess.run(["kicad-cli", "pcb", "render", "--side", "top", "--perspective",
+                        "--rotate", "-35,0,-20", "--zoom", "1.0", "--width", "1600",
+                        "--height", "900", "--quality", "high", "--background", "opaque",
+                        "-o", out, self.path], capture_output=True, text=True)
+        return out

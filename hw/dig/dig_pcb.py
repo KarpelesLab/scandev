@@ -23,8 +23,9 @@ from kipcb import Board              # noqa: E402
 W, H = 112, 86
 SUPPLY = ["VBUS", "+5V", "+3V3", "+1V0", "+1V8", "+5VA", "V12", "V12_F", "SW1", "SW2",
           "RP_1V1", "XO_VDD", "ADC_DRVDD"]
-b = Board(s, W, H, track=0.15, clearance=0.127, via=(0.5, 0.3),
-          wide={n: 0.3 for n in SUPPLY}, wide_via=(0.5, 0.3), planes=("In1.Cu",))
+# JLCPCB four-layer minimums are 0.09 mm track and gap and a 0.45/0.2 mm via
+b = Board(s, W, H, track=0.127, clearance=0.1, via=(0.45, 0.2),
+          wide={n: 0.3 for n in SUPPLY}, wide_via=(0.45, 0.2), planes=("In1.Cu",))
 
 
 def row(refs, x, y, dx=0.0, dy=0.0, rot=0, side="F"):
@@ -38,10 +39,16 @@ b.place("U10", FX, FY, 0)
 # bulk capacitors beside and below the package
 row(["C50", "C51", "C52", "C53", "C60", "C61"], 70.5, 24, dy=3.6, rot=90)
 row(["C66", "C67", "C68", "C69", "C70", "C71"], 45.5, 46.5, dx=5)
-# 100 nF on the back, under the supply balls in the middle of the array
+# 100 nF on the back in a ring just outside the ball field: under the
+# field they sit on the only places a via can go, and inner balls
+# (CCLK, TDI) could not get out
 small = [f"C{n}" for n in list(range(54, 60)) + list(range(62, 66)) + list(range(72, 82))]
 for i, ref in enumerate(small):
-    b.place(ref, FX - 4.8 + 2.4 * (i % 5), FY - 3.6 + 2.4 * (i // 5), 0, "B")
+    k, j = divmod(i, 5)
+    t = -5.6 + 2.8 * j
+    x, y, rot = [(FX + t, FY - 9.8, 0), (FX + 9.8, FY + t, 90),
+                 (FX + t, FY + 9.8, 0), (FX - 9.8, FY + t, 90)][k]
+    b.place(ref, x, y, rot, "B")
 row(["R34", "R35", "R36", "R37", "R38", "R33"], 76, 28, dy=3)
 b.place("J6", 107, 36, 0)
 b.place("J13", 56, 5, 90)
@@ -107,8 +114,12 @@ b.place("D2", 100.5, 27, 0)
 RX, RY = 56, 62
 b.place("U2", RX, RY, 270)            # GPIO0-11 side towards the FPGA
 rp_caps = [f"C{n}" for n in range(5, 17)]
-for i, ref in enumerate(rp_caps):
-    b.place(ref, RX - 4.8 + 3.2 * (i % 4), RY - 2.6 + 2.6 * (i // 4), 0, "B")
+for i, ref in enumerate(rp_caps):          # on the back, around the package, not under it
+    k, j = divmod(i, 3)
+    t = -3.4 + 3.4 * j
+    x, y, rot = [(RX + t, RY - 6.6, 0), (RX + 6.6, RY + t, 90),
+                 (RX + t, RY + 6.6, 0), (RX - 6.6, RY + t, 90)][k]
+    b.place(ref, x, y, rot, "B")
 b.place("Y1", 44, 62, 0)
 b.place("C3", 40.5, 59, 0)
 b.place("C4", 40.5, 65, 0)
@@ -163,4 +174,5 @@ for ref, (x, y) in zip(["H1", "H2", "H3", "H4"], [(4, 82), (108, 4), (108, 82), 
 
 if __name__ == "__main__":
     work = os.path.join(HERE, "..", "..", "build", "hw", "dig")
-    b.run(HERE, work, route="--route" in sys.argv)
+    b.stitch_pitch = 2.0
+    b.run(HERE, work, route="--route" in sys.argv, passes=40, tries=int(os.environ.get("TRIES", "3")))

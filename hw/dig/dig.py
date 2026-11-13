@@ -118,7 +118,7 @@ C(s, "C18", "100n", (250, 44), "+3V3", "GND")
 # =========================================================== power
 s.text("POWER  logic from USB 5 V; ADC analogue rail from the 12 V system supply", (262, 8), size=2.5)
 BUCK = dict(fp="Package_TO_SOT_SMD:SOT-23-5", lcsc="C141836", mpn="TLV62569DBVR")
-IND = dict(fp="Inductor_SMD:L_Taiyo-Yuden_NR-50xx", mpn="2.2uH >=2.5A shielded 5x5")
+IND = dict(fp="Inductor_SMD:L_Taiyo-Yuden_NR-50xx", lcsc="C167957", mpn="FNR5040S2R2MT")
 for k, (rail, rtop, rbot, x) in enumerate([("+3V3", "100k", "22k", 270), ("+1V0", "100k", "150k", 270)]):
     y = 22 + 26 * k
     u = f"U{4+k}"
@@ -157,7 +157,7 @@ s.text("CLOCK AND ADC  one 50 MHz oscillator for FPGA and converter; 1 V span, s
 s.add("Oscillator:ASE-xxxMHz", "X1", "50MHz", (208, 76),
       {"EN": "XO_VDD", "GND": "GND", "OUT": "CLK_XO", "Vdd": "XO_VDD"},
       fp="Oscillator:Oscillator_SMD_Abracon_ASE-4Pin_3.2x2.5mm",
-      mpn="50MHz 3.3V CMOS XO 3225, <1ps rms jitter")
+      lcsc="C26267", mpn="SiT8008BI-22-33E-50.000000")
 FB(s, "FB1", (204, 66), "+3V3", "XO_VDD")
 C(s, "C32", "100n", (216, 66), "XO_VDD", "GND")
 R(s, "R25", "33", (222, 74), "CLK_XO", "CLK50", rot=90)

@@ -21,10 +21,9 @@ Early. Nothing has been built or run on hardware yet.
 | Transmit/receive front end in SPICE (`sim/frontend.py`) | passive network modelled |
 | Amplifier output network (`sim/pa.py`) | done |
 | Schematics of the four boards (`hw/`) | written; KiCad's netlist matches and the rule check passes |
-| Layout: front end, amplifier, probe | placed and autorouted; no rule violations, nothing unconnected; not reviewed |
-| Layout: digital board | placed and autorouted, **not complete**: 11 nets unrouted, 7 isolated patches of ground pour |
-| Parts | every catalogue number checked against JLCPCB; connectors, inductors, oscillator and buttons not chosen |
-| Fabrication files (`hw/lib/fab.py`) | generated for the routed boards; placement rotations unchecked |
+| Layout of the four boards | placed and autorouted; no rule violations, nothing unconnected; not reviewed |
+| Parts | every catalogue number checked against JLCPCB; only the SMA connectors and the probe's hand-fitted parts are not chosen |
+| Fabrication files (`hw/lib/fab.py`) | generated for all four boards; placement rotations unchecked |
 | Gateware core (`gateware/rtl`) | passes simulation, synthesises for `xc7a35t-ftg256`; on hold until a board exists |
 | RP2040 firmware, host software | not started |
 
@@ -52,6 +51,14 @@ footprints, routes the board and runs the design rule check.
 
 The amplifier's output network and the front end's quarter-wave sections
 are fitted to one frequency. They are fitted for hexamine.
+
+Renders of the current layouts (KiCad's 3D view; parts without a 3D model
+in KiCad's library, the FPGA among them, are missing):
+
+| | |
+|---|---|
+| ![Digital board](hw/dig/dig-3d.png) Digital | ![Amplifier](hw/pa/pa-3d.png) Amplifier |
+| ![Receive front end](hw/fe/fe-3d.png) Receive front end | ![Probe](hw/probe/probe-3d.png) Probe |
 
 ### Wiring
 
@@ -104,7 +111,7 @@ python3 gateware/tb/run_core.py
 python3 hw/fe/fe.py           # schematic; likewise pa, dig, probe; needs KiCad 9+
 python3 hw/fe/fe_pcb.py --route   # layout; needs freerouting under tools/
 python3 hw/lib/checkbom.py hw/*/*-bom.csv
-python3 hw/lib/fab.py fe pa probe
+python3 hw/lib/fab.py fe pa probe dig
 ```
 
 The gateware is simulated and synthesised with
