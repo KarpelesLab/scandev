@@ -300,11 +300,13 @@ class Schematic:
 
     # -- public -------------------------------------------------------------
     def add(self, lib_id, ref, value, at, nets, rot=0, unit=1, fp="", lcsc="",
-            mpn="", stub=1, ref_off=None, val_off=None, hide_value=False, **props):
+            mpn="", stub=1, ref_off=None, val_off=None, hide_value=False, rest_open=False,
+            **props):
         """Place a symbol at grid position `at` and connect its pins.
 
         `nets` maps pin number or pin name to a net name, or to None for a
-        pin deliberately left open.  Every pin of the unit must be covered.
+        pin deliberately left open.  Every pin of the unit must be covered,
+        unless `rest_open` says that the pins not named are all left open.
         """
         sym = self._use(lib_id)
         x, y = at[0] * G, at[1] * G
@@ -325,10 +327,12 @@ class Schematic:
                 key = num
             elif name in nets:
                 key = name
+            elif rest_open:
+                key = None
             else:
                 raise KeyError(f"{ref} ({lib_id}): pin {num} '{name}' has no net")
             used.add(key)
-            net = nets[key]
+            net = nets[key] if key is not None else None
             self.want[(ref, num)] = net
             rx, ry = _rot(px, py, rot)
             cx, cy = round(x + rx, 4), round(y - ry, 4)
@@ -344,7 +348,7 @@ class Schematic:
                 self._power(net, ex, ey, out)
             else:
                 self._label(net, ex, ey, out)
-        extra = set(nets) - used
+        extra = set(nets) - used - {None}
         if extra:
             raise KeyError(f"{ref} ({lib_id}): no such pin(s) {sorted(extra)}")
 

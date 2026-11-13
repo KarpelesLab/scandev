@@ -43,7 +43,10 @@ s.add("Connector:Barrel_Jack", "J1", "12V IN", (14, y), {"1": "VIN", "2": "GND"}
 s.add("Device:D_Schottky", "D1", "SS34", (30, y - 4), {"2": "VIN", "1": "VSYS"},
       fp="Diode_SMD:D_SMA", lcsc="C8678", mpn="SS34")
 C(s, "C1", "10u 25V", (40, y + 2), "VSYS", "GND", pkg="1206")
-s.add("Connector_Generic:Conn_01x02", "J2", "12V OUT", (52, y), {"1": "VSYS", "2": "GND"},
+# one 12 V feed each for the receive front end and the digital board's ADC rail
+s.add("Connector_Generic:Conn_01x02", "J2", "12V OUT A", (50, y - 3), {"1": "VSYS", "2": "GND"},
+      fp="Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical")
+s.add("Connector_Generic:Conn_01x02", "J7", "12V OUT B", (50, y + 5), {"1": "VSYS", "2": "GND"},
       fp="Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical")
 R(s, "R1", "220 1W", (66, y - 4), "VSYS", "VPA", pkg="2512", rot=90)
 R(s, "R2", "220 1W", (66, y + 3), "VSYS", "VPA", pkg="2512", rot=90)

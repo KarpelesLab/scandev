@@ -5,7 +5,7 @@ not been checked against the catalogue; check them before ordering.
 """
 FP_R = {"0603": "Resistor_SMD:R_0603_1608Metric", "1206": "Resistor_SMD:R_1206_3216Metric",
         "2512": "Resistor_SMD:R_2512_6332Metric"}
-FP_C = {"0603": "Capacitor_SMD:C_0603_1608Metric", "0805": "Capacitor_SMD:C_0805_2012Metric",
+FP_C = {"0402": "Capacitor_SMD:C_0402_1005Metric", "0603": "Capacitor_SMD:C_0603_1608Metric", "0805": "Capacitor_SMD:C_0805_2012Metric",
         "1206": "Capacitor_SMD:C_1206_3216Metric"}
 
 # (value, package) -> LCSC
@@ -16,7 +16,7 @@ R_LCSC = {
 }
 C_LCSC = {
     ("100n", "0603"): "C14663", ("1u", "0603"): "C15849", ("10u", "0805"): "C15850",
-    ("10n", "0603"): "C57112", ("100p", "0603"): "C14858",
+    ("10n", "0603"): "C57112", ("100p", "0603"): "C14858", ("100n", "0402"): "C1525",
 }
 LCSC_VERIFIED = {"C23185", "C8218"}
 
@@ -71,3 +71,18 @@ def holes(sch, at, n=4):
     for i in range(n):
         sch.add("Mechanical:MountingHole", f"H{i+1}", "M3", (at[0] + 8 * i, at[1]), {},
                 fp="MountingHole:MountingHole_3.2mm_M3", hide_value=True)
+
+
+def caps(sch, prefix, start, rail, values, at, pkg="0603", pitch=6, gnd="GND"):
+    """A row of decoupling capacitors on one rail; returns the next number."""
+    n = start
+    for i, v in enumerate(values):
+        C(sch, f"{prefix}{n}", v, (at[0] + pitch * i, at[1]), rail, gnd,
+          pkg=pkg if not v.startswith(("22u", "10u", "4.7u")) else "0805")
+        n += 1
+    return n
+
+
+def button(sch, ref, value, at, a, b="GND"):
+    sch.add("Switch:SW_Push", ref, value, at, {"1": a, "2": b},
+            fp="Button_Switch_SMD:SW_SPST_TL3342", mpn="TL3342 / 1TS005 class 5x5 tact")
