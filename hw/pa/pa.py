@@ -4,7 +4,7 @@
 Two logic inputs from the FPGA (HI and LO, one coax each) drive a UCC27282
 half-bridge driver and two MOSFETs.  A series capacitor and inductor and a
 shunt capacitor turn the 50 ohm line into the ~6 ohm load the bridge needs
-and remove the harmonics of the square wave: 3.8 W at 12 V, 5.9 W at 15 V
+and remove the harmonics of the square wave: 3.8 W at 12 V, 6.0 W at 15 V
 (sim/pa.py).  When the bridge is not switching it adds no noise, which the
 passive receive isolation depends on.
 
@@ -12,7 +12,8 @@ The bridge is fed through 110 ohm from a large capacitor.  A pulse train
 draws from the capacitor; a transmitter stuck on by a fault collapses the
 rail instead of cooking the probe.
 
-Band-setting parts: C10, L1, C12 (3.9 nF, 1.5 uH, 2.7 nF for 3.306 MHz).
+Band-setting parts: C10 (+C11), L1, C12 + C13: 3.9 nF, 1.5 uH and 2.2 nF + 470 pF
+for 3.306 MHz.  They see under 50 V.
 """
 import os
 import sys
@@ -89,12 +90,12 @@ s.add("Transistor_FET:IRLML0030", "Q1", "IRLML0060", (106, y - 4),
 s.add("Transistor_FET:IRLML0030", "Q2", "IRLML0060", (106, y + 10),
       {"1": "GL", "3": "SW", "2": "GND"}, **FET)
 R(s, "R13", "10k", (118, y + 8), "SW", "GND")
-C(s, "C10", "3.9n C0G 100V", (128, y - 4), "SW", "TANK", pkg="1206", rot=90)
-C(s, "C11", "DNP", (128, y + 4), "SW", "TANK", pkg="1206", rot=90)
+C(s, "C10", "3.9n C0G", (128, y - 4), "SW", "TANK", pkg="0805", rot=90)
+C(s, "C11", "DNP", (128, y + 4), "SW", "TANK", pkg="0805", rot=90)
 L(s, "L1", "1.5u", (142, y - 4), "TANK", "TX_OUT", fp="Inductor_SMD:L_Bourns_SRP5030T",
   mpn="1.5uH >=3A")
-C(s, "C12", "2.7n C0G 100V", (134, y + 14), "TX_OUT", "GND", pkg="1206")
-C(s, "C13", "DNP", (144, y + 14), "TX_OUT", "GND", pkg="1206")
+C(s, "C12", "2.2n C0G", (134, y + 14), "TX_OUT", "GND", pkg="0805")
+C(s, "C13", "470p C0G", (144, y + 14), "TX_OUT", "GND", pkg="0805")
 sma(s, "J6", "TX OUT", (156, y), "TX_OUT")
 
 for i, net in enumerate(["VIN", "GND", "VSYS", "VPA", "VDRV"]):

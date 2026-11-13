@@ -49,7 +49,7 @@ s.add("Connector:USB_C_Receptacle_USB2.0_16P", "J1", "USB-C", (18, 30),
 R(s, "R1", "5.1k", (34, 18), "CC1", "GND")
 R(s, "R2", "5.1k", (40, 18), "CC2", "GND")
 s.add("Device:Polyfuse", "F1", "1A hold", (34, 30), {"1": "VBUS", "2": "+5V"}, rot=90,
-      fp="Fuse:Fuse_1206_3216Metric", mpn="1206 PTC 1A hold / 6V")
+      fp="Fuse:Fuse_1206_3216Metric", lcsc="C20800", mpn="SMD1206P100TF")
 s.add("Power_Protection:USBLC6-2SC6", "U1", "USBLC6-2SC6", (48, 40),
       {"1": "USB_DP_C", "6": "USB_DP_C", "3": "USB_DM_C", "4": "USB_DM_C",
        "5": "VBUS", "2": "GND"},
@@ -104,9 +104,10 @@ n = caps(s, "C", n, "RP_1V1", ["100n", "100n", "1u"], (180, 66))
 
 # =========================================================== microSD
 s.text("microSD  SPI or 4-bit SDIO; holds FPGA bitstreams and scan results", (200, 8), size=2.5)
-s.add("Connector:Micro_SD_Card_Det1", "J3", "microSD", (228, 26),
+# the detect switch is between pins 9 and 10: one side grounded, the other pulled up
+s.add("Connector:Micro_SD_Card_Det2", "J3", "microSD", (228, 26),
       {"DAT2": "SD_DAT2", "DAT3/CD": "SD_DAT3", "CMD": "SD_CMD", "VDD": "+3V3",
-       "CLK": "SD_CLK", "VSS": "GND", "DAT0": "SD_DAT0", "DAT1": "SD_DAT1", "DET": "SD_DET",
+       "CLK": "SD_CLK", "VSS": "GND", "DAT0": "SD_DAT0", "DAT1": "SD_DAT1", "9": "SD_DET", "10": "GND",
        "SHIELD": "GND"},
       fp="Connector_Card:microSD_HC_Molex_104031-0811", lcsc="C585350", mpn="104031-0811")
 for i, net in enumerate(["SD_CMD", "SD_DAT0", "SD_DAT1", "SD_DAT2", "SD_DAT3", "SD_DET"]):
@@ -137,7 +138,7 @@ C(s, "C26", "1u", (286, 80), "+1V8", "GND")
 C(s, "C27", "10u", (292, 80), "+1V8", "GND", pkg="0805")
 
 header("J4", "12V IN", (262, 98), ["V12", "GND"])
-R(s, "R20", "10 1/2W", (274, 94), "V12", "V12_F", pkg="1206", rot=90)
+R(s, "R20", "10", (274, 94), "V12", "V12_F", pkg="1206", rot=90)
 C(s, "C28", "10u 25V", (284, 100), "V12_F", "GND", pkg="1206")
 s.add("Regulator_Linear:AMS1117-5.0", "U7", "AMS1117-5.0", (296, 96),
       {"VI": "V12_F", "GND": "GND", "VO": "+5VA"},
@@ -164,7 +165,7 @@ R(s, "R26", "33", (222, 80), "CLK_XO", "CLKBUF_IN", rot=90)
 # 5 V buffer: the converter's clock input wants 3.5 V for a high
 s.add("74xGxx:74AHCT1G125", "U8", "74AHCT1G125", (236, 82),
       {"1": "GND", "2": "CLKBUF_IN", "3": "GND", "4": "CLKBUF_OUT", "5": "+5VA"},
-      fp="Package_TO_SOT_SMD:SOT-23-5", mpn="SN74AHCT1G125DBVR")
+      fp="Package_TO_SOT_SMD:SOT-23-5", lcsc="C7484", mpn="SN74AHCT1G125DBVR")
 C(s, "C33", "100n", (246, 74), "+5VA", "GND")
 R(s, "R27", "33", (250, 84), "CLKBUF_OUT", "ADC_CLK", rot=90)
 
@@ -216,7 +217,7 @@ for k in range(3):
         nets[str(j + 1)] = f"ADC_D{b}_A"
         nets[str(8 - j)] = f"ADC_D{b}"
     s.add("Device:R_Pack04", f"RN{k+1}", "33", (286 + 12 * k, 144), nets,
-          fp="Resistor_SMD:R_Array_Convex_4x0603", lcsc="C25501", mpn="4D03WGJ0330T5E")
+          fp="Resistor_SMD:R_Array_Convex_4x0603", lcsc="C25508", mpn="4D03WGJ0330T5E")
 R(s, "R32", "33", (322, 142), "ADC_OTR_A", "ADC_OTR", rot=90)
 
 # =========================================================== FPGA

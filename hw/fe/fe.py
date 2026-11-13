@@ -5,7 +5,9 @@ Three coax ports -- TX from the amplifier, PROBE to the tuned coil, RX to the
 ADC -- plus a four-pin header for power and the blanking signal.
 
 Band-setting parts (L1-L3, C1-C6) are fitted for the 3.306 MHz line of
-hexamine: 2.2 uH and 1 nF make a 46 ohm quarter-wave section there.  For
+hexamine: 2.2 uH and 1 nF make a 46 ohm quarter-wave section there.  The
+capacitors are 50 V parts, enough for the 18 V peak a 5 W pulse puts on the
+probe port; a much stronger amplifier needs higher-voltage ones at C1.  For
 another line at frequency f: L = 50 / (2 pi f), C = 1 / (2 pi f 50), and
 check it with sim/frontend.py before transmitting.
 """
@@ -46,10 +48,10 @@ cn = dn = 0
 for k in range(3):
     a, b = nodes[k], nodes[k + 1]
     cn += 1
-    C(s, f"C{cn}", "1n C0G 100V", (x, y), a, "GND", pkg="0805")
+    C(s, f"C{cn}", "1n C0G", (x, y), a, "GND", pkg="0805")
     L(s, f"L{k+1}", "2.2u", (x + 12, y - 4), a, b, **IND)
     cn += 1
-    C(s, f"C{cn}", "1n C0G 100V", (x + 22, y), b, "GND", pkg="0805")
+    C(s, f"C{cn}", "1n C0G", (x + 22, y), b, "GND", pkg="0805")
     crossed(s, f"D{7+dn}", (x + 33, y - 3), b, "GND")
     crossed(s, f"D{8+dn}", (x + 33, y + 4), b, "GND")
     dn += 2

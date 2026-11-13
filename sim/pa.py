@@ -52,6 +52,6 @@ if __name__ == "__main__":
     ap.add_argument("--vdd", type=float, default=12.0)
     ap.add_argument("--cs", type=float, default=3.9e-9)
     ap.add_argument("--l", type=float, default=1.5e-6)
-    ap.add_argument("--cp", type=float, default=2.7e-9)
+    ap.add_argument("--cp", type=float, default=2.67e-9)
     a = ap.parse_args()
     report(a.f0, a.vdd, a.cs, a.l, a.cp)
