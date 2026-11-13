@@ -1,0 +1,11 @@
+Comment,Designator,Footprint,LCSC,MPN
+22p 1kV C0G,"CM1,CM2,CT3,CT4",C_1206_3216Metric,C107174,
+DNP,"CM3,CM4,CT5,CT6",C_1206_3216Metric,,
+100p 1kV C0G,"CT1,CT2",C_1206_3216Metric,C9188,
+TUNE 5-40p,CV1,SolderWire-0.75sqmm_1x02_P7mm_D1.25mm_OD3.5mm,,"variable capacitor, >=500 V"
+MATCH 5-30p,CV2,SolderWire-0.75sqmm_1x02_P7mm_D1.25mm_OD3.5mm,,"variable capacitor, >=500 V"
+M3,"H1,H2,H3,H4",MountingHole_3.2mm_M3,,
+TO FRONT END,J1,SMA_Samtec_SMA-J-P-H-ST-EM1_EdgeMount,,
+COIL,J2,"TerminalBlock_Phoenix_MKDS-1,5-2_1x02_P5.00mm_Horizontal",,
+TEMP,J3,PinHeader_1x02_P2.54mm_Vertical,,
+10k NTC,RT1,R_0603_1608Metric,,10k B3950 NTC 0603
