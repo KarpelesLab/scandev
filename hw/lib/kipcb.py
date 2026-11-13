@@ -26,14 +26,14 @@ def P(x, y):
 
 class Board:
     def __init__(self, sch, width, height, layers=4, track=0.25, clearance=0.2,
-                 via=(0.6, 0.3), pad_alias=None):
+                 via=(0.6, 0.3), pad_alias=None, wide=None):
         self.sch = sch
         self.w, self.h = width, height
         self.layers = layers
         self.rules = dict(track=track, clearance=clearance, via=via)
         self.placed = {}
         self.pad_alias = pad_alias or {}     # footprint pad number -> schematic pin number
-        self.keepouts = []
+        self.wide = wide or {}             # net -> track width, mm
 
     def place(self, ref, x, y, rot=0, side="F"):
         self.placed[ref] = (x, y, rot, side)
@@ -52,6 +52,18 @@ class Board:
         nc.SetClearance(mm(self.rules["clearance"]))
         nc.SetViaDiameter(mm(self.rules["via"][0]))
         nc.SetViaDrill(mm(self.rules["via"][1]))
+
+        for width in sorted(set(self.wide.values())):
+            name = f"W{int(round(width * 1000))}"
+            wc = pcbnew.NETCLASS(name)
+            wc.SetTrackWidth(mm(width))
+            wc.SetClearance(mm(self.rules["clearance"]))
+            wc.SetViaDiameter(mm(0.8))
+            wc.SetViaDrill(mm(0.4))
+            ds.m_NetSettings.SetNetclass(name, wc)
+            for net, w_ in self.wide.items():
+                if w_ == width:
+                    ds.m_NetSettings.SetNetclassPatternAssignment(net, name)
 
         nets = {}
         for net in sorted({v for v in self.sch.want.values() if v}):
@@ -109,6 +121,24 @@ class Board:
             copper += [pcbnew.In1_Cu, pcbnew.In2_Cu]
         for layer in copper:
             self._zone(b, layer)
+
+        # keep tracks and vias off the board edge
+        e = 0.8
+        for x0, y0, x1, y1 in [(0, 0, self.w, e), (0, self.h - e, self.w, self.h),
+                               (0, 0, e, self.h), (self.w - e, 0, self.w, self.h)]:
+            k = pcbnew.ZONE(b)
+            k.SetIsRuleArea(True)
+            k.SetDoNotAllowTracks(True)
+            k.SetDoNotAllowVias(True)
+            k.SetDoNotAllowZoneFills(False)
+            k.SetDoNotAllowPads(False)
+            k.SetDoNotAllowFootprints(False)
+            k.SetLayerSet(pcbnew.LSET.AllCuMask())
+            o = k.Outline()
+            o.NewOutline()
+            for x, y in [(x0, y0), (x1, y0), (x1, y1), (x0, y1)]:
+                o.Append(mm(x), mm(y))
+            b.Add(k)
 
         os.makedirs(outdir, exist_ok=True)
         self.board = b
@@ -186,3 +216,29 @@ class Board:
                         "--mode-single", "--page-size-mode", "2", "--exclude-drawing-sheet",
                         "-o", out, self.path], capture_output=True, text=True)
         return out
+
+    IGNORED = ("lib_footprint_issues", "silk_overlap", "silk_over_copper", "silk_edge_clearance")
+
+    def run(self, outdir, workdir, route=False, png=True):
+        """Build, optionally route, check and render; print a short report."""
+        self.build(outdir)
+        if self.unmapped:
+            print("pads with no schematic pin:", " ".join(self.unmapped))
+        if route:
+            self.route(workdir)
+        else:
+            self.top_pour()
+        r = self.drc(workdir)
+        real = [v for v in r["violations"] if v[1] not in self.IGNORED]
+        print(f"{self.sch.name}: {len(real)} rule violations, {len(r['unconnected'])} unconnected"
+              + ("" if route else " (not routed)"))
+        for v in real[:12]:
+            print("   ", v[1], "|", v[3][:110])
+        for u in r["unconnected"][:6] if route else []:
+            print("    unconnected |", u[:110])
+        svg = self.svg(workdir, "F.Cu,F.SilkS,F.CrtYd,Edge.Cuts", "top")
+        if png:
+            out = os.path.join(outdir, self.sch.name + "-top.png")
+            subprocess.run(["magick", "-density", "380", "-background", "white", svg, "-flatten",
+                            "-resize", "1600x", out], capture_output=True)
+        return not real and (not route or not r["unconnected"])

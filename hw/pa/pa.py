@@ -38,7 +38,7 @@ FET = dict(fp="Package_TO_SOT_SMD:SOT-23", lcsc="C5122025", mpn="IRLML0060TRPBF"
 s.text("SUPPLY  12 V in (9-15 V), passed on to the receive front end; bridge rail fed through 110 ohm",
        (8, 6))
 y = 18
-s.add("Connector:Barrel_Jack", "J1", "12V IN", (14, y), {"1": "VIN", "2": "GND"},
+s.add("Connector:Barrel_Jack_Switch", "J1", "12V IN", (14, y), {"1": "VIN", "2": "GND", "3": "GND"},
       fp="Connector_BarrelJack:BarrelJack_Horizontal", lcsc="C431532", mpn="DC005-T")
 s.add("Device:D_Schottky", "D1", "SS34", (30, y - 4), {"2": "VIN", "1": "VSYS"},
       fp="Diode_SMD:D_SMA", lcsc="C8678", mpn="SS34")

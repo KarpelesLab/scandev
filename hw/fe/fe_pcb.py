@@ -93,16 +93,4 @@ b.place("D14", 100, 8, 0)
 
 if __name__ == "__main__":
     work = os.path.join(HERE, "..", "..", "build", "hw", "fe")
-    b.build(HERE)
-    print("pads with no schematic pin:", b.unmapped or "none")
-    if "--route" in sys.argv:
-        b.route(work)
-        print(b.route_log.splitlines()[-3][:150])
-    else:
-        b.top_pour()
-    r = b.drc(work)
-    kinds = {}
-    for v in r["violations"]:
-        kinds[v[1]] = kinds.get(v[1], 0) + 1
-    print("drc:", kinds or "clean", "| unconnected:", len(r["unconnected"]))
-    print(b.svg(work, "F.Cu,F.SilkS,F.CrtYd,Edge.Cuts", "top"))
+    b.run(HERE, work, route="--route" in sys.argv)
