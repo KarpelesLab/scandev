@@ -3,7 +3,8 @@
 LCSC numbers marked `?` in LCSC_UNVERIFIED were written from memory and have
 not been checked against the catalogue; check them before ordering.
 """
-FP_R = {"0603": "Resistor_SMD:R_0603_1608Metric", "1206": "Resistor_SMD:R_1206_3216Metric"}
+FP_R = {"0603": "Resistor_SMD:R_0603_1608Metric", "1206": "Resistor_SMD:R_1206_3216Metric",
+        "2512": "Resistor_SMD:R_2512_6332Metric"}
 FP_C = {"0603": "Capacitor_SMD:C_0603_1608Metric", "0805": "Capacitor_SMD:C_0805_2012Metric",
         "1206": "Capacitor_SMD:C_1206_3216Metric"}
 
@@ -55,3 +56,18 @@ def sma(sch, ref, value, at, net, rot=0):
     sch.add("Connector:Conn_Coaxial", ref, value, at, {"1": net, "2": "GND"}, rot=rot,
             ref_off=(3.81, -2.54), val_off=(3.81, 0),
             fp="Connector_Coaxial:SMA_Samtec_SMA-J-P-H-ST-EM1_EdgeMount")
+
+
+def led(sch, ref, at, rail, r_ref, r_value="2.2k", colour="green", net=None):
+    """Indicator: resistor from `rail`, LED to ground."""
+    net = net or f"{ref}_A"
+    R(sch, r_ref, r_value, at, rail, net)
+    sch.add("Device:LED", ref, colour, (at[0] + 8, at[1]), {"2": net, "1": "GND"}, rot=90,
+            fp="LED_SMD:LED_0603_1608Metric", lcsc="C72043",
+            ref_off=(3.81, -1.27), val_off=(3.81, 1.27))
+
+
+def holes(sch, at, n=4):
+    for i in range(n):
+        sch.add("Mechanical:MountingHole", f"H{i+1}", "M3", (at[0] + 8 * i, at[1]), {},
+                fp="MountingHole:MountingHole_3.2mm_M3", hide_value=True)

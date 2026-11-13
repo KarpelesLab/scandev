@@ -83,6 +83,8 @@ def _lib(name):
 
 def load_symbol(lib_id):
     """A library symbol, flattened if it extends another, named `lib_id`."""
+    if lib_id in _custom:
+        return copy.deepcopy(_custom[lib_id])
     lib, name = lib_id.split(":")
     sym = copy.deepcopy(_lib(lib)[name])
     ext = child(sym, "extends")
@@ -100,6 +102,65 @@ def load_symbol(lib_id):
         sym = ["symbol", Q(lib_id)] + out + list(own.values())
     sym[1] = Q(lib_id)
     return sym
+
+
+_custom = {}
+
+
+def define_symbol(lib_id, pins, ref="U", width=None):
+    """Make a box symbol for a part KiCad's libraries do not have.
+
+    `pins` is a list of (number, name, side, type): side is L, R, T or B and
+    pins are laid out along each side in the order given, 2.54 mm apart; an
+    empty name leaves a gap.  type is a KiCad electrical type (input, output,
+    passive, power_in, power_out, bidirectional, ...).
+    """
+    name = lib_id.split(":")[1]
+    side = {k: [p for p in pins if p[2] == k] for k in "LRTB"}
+    rows = max(len(side["L"]), len(side["R"]), 1)
+    cols = max(len(side["T"]), len(side["B"]), 1)
+    longest = max([len(p[1]) for p in side["L"]] + [0]) + max([len(p[1]) for p in side["R"]] + [0])
+    hw = width / 2 if width else max(5.08, 2.54 * -(-(longest * 0.9 + 4) // 5.08) * 1.0,
+                                     5.08 * (cols // 2 + 1))
+    hw = 2.54 * round(hw / 2.54)
+    # room above and below the side pins for the names of top and bottom pins
+    tb = max([len(p[1]) for p in side["T"] + side["B"]] + [0])
+    hh = 2.54 * ((rows + 1) // 2 + 1 + -(-tb // 3))
+
+    def font():
+        return ["effects", ["font", ["size", 1.27, 1.27]]]
+
+    def prop(k, v, x, y, hide=False):
+        e = font()
+        if hide:
+            e.append(["hide", "yes"])
+        return ["property", Q(k), Q(v), ["at", x, y, 0], e]
+
+    body = ["symbol", Q(name + "_0_1"),
+            ["rectangle", ["start", -hw, hh], ["end", hw, -hh],
+             ["stroke", ["width", 0.254], ["type", "default"]], ["fill", ["type", "background"]]]]
+    unit = ["symbol", Q(name + "_1_1")]
+    for k, lst in side.items():
+        n = len(lst)
+        for i, (num, pname, _, ptype) in enumerate(lst):
+            if not num:
+                continue
+            if k in "LR":
+                y = 2.54 * ((rows - 1) / 2 - i)
+                y = 2.54 * round(y / 2.54 + 0.25)
+                at = [-hw - 2.54, y, 0] if k == "L" else [hw + 2.54, y, 180]
+            else:
+                x = 5.08 * (i - n // 2) + (2.54 if n % 2 == 0 else 0)
+                at = [x, hh + 2.54, 270] if k == "T" else [x, -hh - 2.54, 90]
+            unit.append(["pin", ptype, "line", ["at"] + at, ["length", 2.54],
+                         ["name", Q(pname), font()], ["number", Q(str(num)), font()]])
+    sym = ["symbol", Q(lib_id), ["pin_names", ["offset", 1.016]], ["exclude_from_sim", "no"],
+           ["in_bom", "yes"], ["on_board", "yes"],
+           prop("Reference", ref, -hw, hh + 1.27), prop("Value", name, -hw, -hh - 1.27),
+           prop("Footprint", "", 0, 0, True), prop("Datasheet", "~", 0, 0, True),
+           prop("Description", "", 0, 0, True), body, unit]
+    _custom[lib_id] = sym
+    return lib_id
 
 
 def symbol_pins(sym):
